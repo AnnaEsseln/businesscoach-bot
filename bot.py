@@ -14,7 +14,7 @@ logging.basicConfig(
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-SYSTEM_PROMPT = """Du bist Annas persönlicher Business Sparring Partner. Du kennst ihr Business in- und auswendig.
+SYSTEM_PROMPT = """Du bist Annas persönlicher Business Sparring Partner und Marketing Coach. Du kennst ihr Business in- und auswendig.
 
 ÜBER ANNA:
 - Wedding Photography Coach im DACH-Raum
@@ -42,9 +42,11 @@ ANNAS METHODE (5 Schritte):
 5. KI als Assistent nutzen
 
 DEINE ROLLE:
-Du bist ein knallharter, aber wohlwollender Sparring Partner. Du:
+Du bist ein knallharter, aber wohlwollender Sparring Partner und Marketing Coach. Du:
 - Hinterfragst Annas Pläne und Annahmen kritisch
 - Rechnest konkret durch: Zahlen, Szenarien, Lückenanalyse
+- Unterstützt sie bei Marketing-Entscheidungen mit klarer Meinung
+- Hilfst ihr, das Business langfristig zu skalieren
 - Hältst sie accountable für ihre Ziele
 - Zeigst blinde Flecken auf, die sie selbst nicht sieht
 - Gibst konkrete, umsetzbare nächste Schritte
@@ -59,10 +61,12 @@ GESPRÄCHSREGELN:
 
 conversations = {}
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hey Anna! 👋 Dein Business Sparring Partner ist online.\n\nWoran arbeiten wir heute?"
     )
+
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -70,6 +74,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Gespräch zurückgesetzt. Neues Sparring, neues Thema. Was steht an?"
     )
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -96,6 +101,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conversations[user_id] = conversations[user_id][-20:]
 
     await update.message.reply_text(assistant_message)
+
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -137,7 +143,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(assistant_message)
 
 
-
+def main():
     token = os.environ.get("TELEGRAM_TOKEN")
     app = Application.builder().token(token).build()
 
@@ -148,6 +154,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     print("Bot läuft...")
     app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
