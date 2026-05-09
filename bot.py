@@ -77,69 +77,78 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_message = update.message.text
+    try:
+        user_id = update.effective_user.id
+        user_message = update.message.text
 
-    if user_id not in conversations:
-        conversations[user_id] = []
+        if user_id not in conversations:
+            conversations[user_id] = []
 
-    conversations[user_id].append({"role": "user", "content": user_message})
+        conversations[user_id].append({"role": "user", "content": user_message})
 
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=conversations[user_id]
-    )
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=conversations[user_id]
+        )
 
-    assistant_message = response.content[0].text
-    conversations[user_id].append({"role": "assistant", "content": assistant_message})
+        assistant_message = response.content[0].text
+        conversations[user_id].append({"role": "assistant", "content": assistant_message})
 
-    if len(conversations[user_id]) > 20:
-        conversations[user_id] = conversations[user_id][-20:]
+        if len(conversations[user_id]) > 20:
+            conversations[user_id] = conversations[user_id][-20:]
 
-    await update.message.reply_text(assistant_message)
+        await update.message.reply_text(assistant_message)
+
+    except Exception as e:
+        await update.message.reply_text(f"Fehler bei Textnachricht: {str(e)}")
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-    voice_file = await update.message.voice.get_file()
-    voice_bytes = await voice_file.download_as_bytearray()
+        voice_file = await update.message.voice.get_file()
+        voice_bytes = await voice_file.download_as_bytearray()
 
-    audio_buffer = io.BytesIO(bytes(voice_bytes))
-    audio_buffer.name = "voice.ogg"
+        audio_buffer = io.BytesIO(bytes(voice_bytes))
+        audio_buffer.name = "voice.ogg"
 
-    transcript = openai_client.audio.transcriptions.create(
-        model="whisper-1",
-        file=audio_buffer,
-        language="de"
-    )
+        transcript = openai_client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_buffer,
+            language="de"
+        )
 
-    user_message = transcript.text
-    await update.message.reply_text(f"🎤 {user_message}")
-    user_id = update.effective_user.id
-    if user_id not in conversations:
-        conversations[user_id] = []
+        user_message = transcript.text
+        await update.message.reply_text(f"🎤 {user_message}")
 
-    conversations[user_id].append({"role": "user", "content": user_message})
+        user_id = update.effective_user.id
+        if user_id not in conversations:
+            conversations[user_id] = []
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=conversations[user_id]
-    )
+        conversations[user_id].append({"role": "user", "content": user_message})
 
-    assistant_message = response.content[0].text
-    conversations[user_id].append({"role": "assistant", "content": assistant_message})
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=conversations[user_id]
+        )
 
-    if len(conversations[user_id]) > 20:
-        conversations[user_id] = conversations[user_id][-20:]
+        assistant_message = response.content[0].text
+        conversations[user_id].append({"role": "assistant", "content": assistant_message})
 
-    await update.message.reply_text(assistant_message)
+        if len(conversations[user_id]) > 20:
+            conversations[user_id] = conversations[user_id][-20:]
+
+        await update.message.reply_text(assistant_message)
+
+    except Exception as e:
+        await update.message.reply_text(f"Fehler bei Sprachnachricht: {str(e)}")
 
 
 def main():
