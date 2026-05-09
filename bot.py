@@ -1,8 +1,10 @@
 import os
 import io
+import json
 import logging
 from anthropic import Anthropic
 from openai import OpenAI
+from supabase import create_client
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -13,6 +15,7 @@ logging.basicConfig(
 
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
 
 SYSTEM_PROMPT = """Du bist Annas persönlicher Business Sparring Partner und Marketing Coach. Du kennst ihr Business in- und auswendig.
 
@@ -59,7 +62,27 @@ GESPRÄCHSREGELN:
 - Wenn Anna ein Umsatzziel nennt: sofort durchrechnen, ob ihr Plan dazu passt
 - Wenn etwas unklar ist: nachfragen, nicht raten"""
 
-conversations = {}
+
+def load_conversation(user_id: int) -> list:
+    try:
+        result = supabase.table("conversations").select("messages").eq("user_id", user_id).execute()
+        if result.data:
+            return result.data[0]["messages"]
+        return []
+    except Exception as e:
+        logging.error(f"Fehler beim Laden: {e}")
+        return []
+
+
+def save_conversation(user_id: int, messages: list):
+    try:
+        supabase.table("conversations").upsert({
+            "user_id": user_id,
+            "messages": messages,
+            "updated_at": "now()"
+        }).execute()
+    except Exception as e:
+        logging.error(f"Fehler beim Speichern: {e}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -70,7 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conversations[user_id] = []
+    save_conversation(user_id, [])
     await update.message.reply_text(
         "Gespräch zurückgesetzt. Neues Sparring, neues Thema. Was steht an?"
     )
@@ -81,10 +104,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         user_message = update.message.text
 
-        if user_id not in conversations:
-            conversations[user_id] = []
-
-        conversations[user_id].append({"role": "user", "content": user_message})
+        messages = load_conversation(user_id)
+        messages.append({"role": "user", "content": user_message})
 
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
@@ -92,14 +113,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             model="claude-sonnet-4-6",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
-            messages=conversations[user_id]
+            messages=messages
         )
 
         assistant_message = response.content[0].text
-        conversations[user_id].append({"role": "assistant", "content": assistant_message})
+        messages.append({"role": "assistant", "content": assistant_message})
 
-        if len(conversations[user_id]) > 20:
-            conversations[user_id] = conversations[user_id][-20:]
+        if len(messages) > 40:
+            messages = messages[-40:]
+
+        save_conversation(user_id, messages)
 
         await update.message.reply_text(assistant_message)
 
@@ -127,23 +150,23 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🎤 {user_message}")
 
         user_id = update.effective_user.id
-        if user_id not in conversations:
-            conversations[user_id] = []
-
-        conversations[user_id].append({"role": "user", "content": user_message})
+        messages = load_conversation(user_id)
+        messages.append({"role": "user", "content": user_message})
 
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
-            messages=conversations[user_id]
+            messages=messages
         )
 
         assistant_message = response.content[0].text
-        conversations[user_id].append({"role": "assistant", "content": assistant_message})
+        messages.append({"role": "assistant", "content": assistant_message})
 
-        if len(conversations[user_id]) > 20:
-            conversations[user_id] = conversations[user_id][-20:]
+        if len(messages) > 40:
+            messages = messages[-40:]
+
+        save_conversation(user_id, messages)
 
         await update.message.reply_text(assistant_message)
 
