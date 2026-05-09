@@ -61,6 +61,7 @@ input,select,textarea{font-family:'DM Sans',sans-serif;}
 // ── KONFIGURATION ── Ersetze mit deinen Supabase-Zugangsdaten
 const SUPABASE_URL  = 'https://fdlwjxyqivzrhmlxxrrq.supabase.co'
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkbHdqeHlxaXZ6cmhtbHh4cnJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTg1MjgsImV4cCI6MjA5MzgzNDUyOH0._Rhm03AMq0QEqvaR_TMQyVOV-SjTPdU51wJZl_wWQ9M'
+
 // ── Supabase Client ──────────────────────────────────────────
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'anna-crm' }
@@ -111,6 +112,7 @@ const fromDB = r => ({
   website: r.website||'', spezialisierung: r.spezialisierung||'',
   driveUrl: r.drive_url||'', gesprachsScore: r.gesprachs_score||null,
   kundenZiele: r.kunden_ziele||'',
+  tags: r.tags||[],
   pipelines: r.pipelines||['closing'],
   closingStage: r.closing_stage||'Strategiegespräch',
   begleitungStage: r.begleitung_stage||null,
@@ -123,6 +125,7 @@ const toDB = c => ({
   website: c.website, spezialisierung: c.spezialisierung,
   drive_url: c.driveUrl||'', gesprachs_score: c.gesprachsScore||null,
   kunden_ziele: c.kundenZiele||'',
+  tags: c.tags||[],
   pipelines: c.pipelines, closing_stage: c.closingStage,
   begleitung_stage: c.begleitungStage, offboarding_date: c.offboardingDate,
   labels: c.labels, products: c.products, webinars: c.webinars, timeline: c.timeline,
@@ -556,8 +559,8 @@ function ContactsView({ contacts, onSelect, selId, prodCat, webCat, onImport }) 
         const name = `${firstName} ${lastName}`.trim() || email
         const phone = r['Telefonnummer'] || r['Phone'] || r['phone'] || ''
         const tagsRaw = r['Tags'] || r['tags'] || r['Label'] || ''
-        const labels = tagsRaw ? tagsRaw.split(',').map(t=>t.trim()).filter(Boolean) : []
-        return { id: uid(), name, email, phone, labels, pipelines: [], closing_stage: 'Strategiegespräch', products: [], webinars: [], timeline: [], website: '', spezialisierung: '', drive_url: '' }
+        const tags = tagsRaw ? tagsRaw.split(',').map(t=>t.trim()).filter(Boolean) : []
+        return { id: uid(), name, email, phone, tags, labels: [], pipelines: [], closing_stage: 'Strategiegespräch', products: [], webinars: [], timeline: [], website: '', spezialisierung: '', drive_url: '' }
       }).filter(r => r.email)
       setImportRows(mapped)
       setShowImport(true)
@@ -578,6 +581,12 @@ function ContactsView({ contacts, onSelect, selId, prodCat, webCat, onImport }) 
   const toggleL = (l)  => setFilterLabels(p => p.includes(l)  ? p.filter(x=>x!==l)  : [...p, l])
   const clearAll = () => { setFilterProds([]); setFilterWebs([]); setFilterLabels([]); setQ('') }
   const hasFilter = filterProds.length>0 || filterWebs.length>0 || filterLabels.length>0 || q.length>0
+  const [selected, setSelected] = useState([])
+  const deleteSelected = async () => {
+    if (!window.confirm(`${selected.length} Kontakte wirklich löschen?`)) return
+    for (const id of selected) { try { await DB.del(id) } catch(e) { console.error(e) } }
+    setSelected([])
+  }
 
   // Collect all labels used
   const allLabels = [...new Set(contacts.flatMap(c=>c.labels||[]))]
@@ -718,35 +727,65 @@ function ContactsView({ contacts, onSelect, selId, prodCat, webCat, onImport }) 
       </div>
 
       {/* Table */}
-      <div style={{flex:1,overflowY:'auto',background:C.w,border:`1px solid ${C.bo}`,borderRadius:12}}>
+      <div style={{flex:1,overflowY:'auto',background:C.w,border:`1px solid ${C.bo}`,borderRadius:12,position:'relative'}}>
+        {selected.length>0&&(
+          <div style={{position:'sticky',top:0,zIndex:10,background:'#fff8f0',borderBottom:`1px solid ${C.bo}`,padding:'8px 14px',display:'flex',alignItems:'center',gap:12}}>
+            <span style={{fontSize:13,fontWeight:500,color:C.br}}>{selected.length} ausgewählt</span>
+            <button onClick={deleteSelected} style={{padding:'5px 14px',background:C.er,color:C.w,border:'none',borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:500}}>
+              Löschen
+            </button>
+            <button onClick={()=>setSelected([])} style={{padding:'5px 14px',background:'none',border:`0.5px solid ${C.bo}`,borderRadius:7,cursor:'pointer',fontSize:12,color:C.tL}}>
+              Abwählen
+            </button>
+          </div>
+        )}
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-          <thead><tr style={{borderBottom:`1px solid ${C.bo}`}}>{['Name & Telefon','Status','Spezialisierung','Produkte','Webinare','Labels'].map(h=><th key={h} style={{padding:'9px 14px',textAlign:'left',fontSize:10.5,color:C.tL,fontWeight:500,letterSpacing:.7,textTransform:'uppercase',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
+          <thead><tr style={{borderBottom:`1px solid ${C.bo}`}}>
+            <th style={{padding:'9px 12px',width:36}}>
+              <input type="checkbox" checked={selected.length===f.length&&f.length>0}
+                onChange={e=>setSelected(e.target.checked?f.map(c=>c.id):[])}
+                style={{cursor:'pointer',accentColor:C.br}}/>
+            </th>
+            {['Name & Telefon','Status','Spezialisierung','Produkte','Webinare','Labels','Tags'].map(h=><th key={h} style={{padding:'9px 14px',textAlign:'left',fontSize:10.5,color:C.tL,fontWeight:500,letterSpacing:.7,textTransform:'uppercase',whiteSpace:'nowrap'}}>{h}</th>)}
+          </tr></thead>
           <tbody>
             {f.map(c => {
               const isSel = c.id===selId
-              const bg = isSel?C.beL:'transparent'
-              return <tr key={c.id} className="rh" onClick={()=>onSelect(c)} style={{borderBottom:`1px solid ${C.bo}`,cursor:'pointer'}}>
-                <td style={{padding:'9px 14px',background:bg}}>
+              const isChk = selected.includes(c.id)
+              const bg = isChk?'#fff8f0':isSel?C.beL:'transparent'
+              return <tr key={c.id} className="rh" style={{borderBottom:`1px solid ${C.bo}`,cursor:'pointer',background:bg}}>
+                <td style={{padding:'9px 12px'}} onClick={e=>e.stopPropagation()}>
+                  <input type="checkbox" checked={isChk}
+                    onChange={e=>setSelected(s=>e.target.checked?[...s,c.id]:s.filter(x=>x!==c.id))}
+                    style={{cursor:'pointer',accentColor:C.br}}/>
+                </td>
+                <td style={{padding:'9px 14px'}} onClick={()=>onSelect(c)}>
                   <div style={{fontWeight:500}}>{c.name}</div>
                   <div style={{fontSize:11,color:C.tL,marginTop:1}}>{c.email}</div>
                   {c.phone && <a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:C.br,marginTop:1,display:'block',textDecoration:'none'}}>{c.phone}</a>}
                 </td>
-                <td style={{padding:'9px 14px',background:bg}}>
+                <td style={{padding:'9px 14px'}} onClick={()=>onSelect(c)}>
                   {c.pipelines.includes('closing')&&<div style={{fontSize:11,background:C.brBg,color:C.br,padding:'1px 7px',borderRadius:4,marginBottom:2,width:'fit-content'}}>C: {c.closingStage}</div>}
                   {c.pipelines.includes('begleitung')&&<div style={{fontSize:11,background:C.okBg,color:C.ok,padding:'1px 7px',borderRadius:4,width:'fit-content'}}>B: {c.begleitungStage}</div>}
                 </td>
-                <td style={{padding:'9px 14px',color:C.tL,fontSize:12,background:bg}}>{c.spezialisierung||'—'}</td>
-                <td style={{padding:'9px 14px',background:bg,maxWidth:180}}>
+                <td style={{padding:'9px 14px',color:C.tL,fontSize:12}} onClick={()=>onSelect(c)}>{c.spezialisierung||'—'}</td>
+                <td style={{padding:'9px 14px',maxWidth:180}} onClick={()=>onSelect(c)}>
                   {c.products.length>0 ? <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
                     {c.products.map(p=>{const col=gc(prodCat?.find(x=>x.id===p.catalogId)?.color);return <span key={p.id} style={{background:col.bg,color:col.tx,padding:'1px 6px',borderRadius:3,fontSize:10.5,fontWeight:500,whiteSpace:'nowrap'}}>{p.name}</span>})}
                   </div> : <span style={{color:C.tL}}>—</span>}
                 </td>
-                <td style={{padding:'9px 14px',background:bg,maxWidth:180}}>
+                <td style={{padding:'9px 14px',maxWidth:180}} onClick={()=>onSelect(c)}>
                   {c.webinars.length>0 ? <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
                     {c.webinars.map(w=>{const col=gc(webCat?.find(x=>x.id===w.catalogId)?.color||'blau');return <span key={w.id} style={{background:col.bg,color:col.tx,padding:'1px 6px',borderRadius:3,fontSize:10.5,whiteSpace:'nowrap'}}>{w.name}</span>})}
                   </div> : <span style={{color:C.tL}}>—</span>}
                 </td>
-                <td style={{padding:'9px 14px',background:bg}}><div style={{display:'flex',gap:3,flexWrap:'wrap'}}>{c.labels.map(l=><STag key={l} text={l}/>)}</div></td>
+                <td style={{padding:'9px 14px'}} onClick={()=>onSelect(c)}><div style={{display:'flex',gap:3,flexWrap:'wrap'}}>{c.labels.map(l=><STag key={l} text={l}/>)}</div></td>
+                <td style={{padding:'9px 14px',maxWidth:220}} onClick={()=>onSelect(c)}>
+                  {(c.tags||[]).length>0 ? <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                    {(c.tags||[]).slice(0,3).map(t=><span key={t} style={{background:'#f0f0f0',color:'#555',padding:'1px 7px',borderRadius:3,fontSize:10,whiteSpace:'nowrap'}}>{t}</span>)}
+                    {(c.tags||[]).length>3&&<span style={{fontSize:10,color:C.tL}}>+{(c.tags||[]).length-3}</span>}
+                  </div> : <span style={{color:C.tL}}>—</span>}
+                </td>
               </tr>
             })}
           </tbody>
