@@ -119,8 +119,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     user_message = transcript.text
-    await update.message.reply_text(f"🎤 _{user_message}_", parse_mode="Markdown")
-
+    await update.message.reply_text(f"🎤 {user_message}")
     user_id = update.effective_user.id
     if user_id not in conversations:
         conversations[user_id] = []
